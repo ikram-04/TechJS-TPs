@@ -1,101 +1,58 @@
-const inquirer = require("inquirer");           
-const { fetchPokemon } = require("./pokemon");  
-const { GameEngine } = require("./game");       
+#!/usr/bin/env node
 
-const bar = (hp, max) => {
-  const filled = Math.round((hp / max) * 20);
-  return "█".repeat(filled) + "░".repeat(20 - filled);
-};
+const { getPokemonByName, getRandomPokemon, buildFighterFromPokemon } = require("./api");
+const { startBattle } = require("./game");
+const inquirer = require("inquirer");
 
-const showStatus = (player, bot) => {
-  console.log(`\n❤️  ${player.name}: [${bar(player.hp, player.maxHp)}] ${Math.max(0, player.hp)}/${player.maxHp}`);
-  console.log(`🤖  ${bot.name}:   [${bar(bot.hp, bot.maxHp)}] ${Math.max(0, bot.hp)}/${bot.maxHp}\n`);
-};
+async function main() {
+  console.log("=====================================");
+  console.log("   MINI JEU POKEMON - NODE.JS");
+  console.log("=====================================");
 
-const playTurn = async (engine) => {
-  const { player, bot } = engine;
-
-  showStatus(player, bot);
-
-  const { moveIndex } = await inquirer.prompt([
-    {
-      type: "list",
-      name: "moveIndex",
-      message: "Choisissez une attaque :",
-      choices: player.moves.map((m, i) => ({
-        name: `${m.name.padEnd(20)} | Puissance: ${String(m.power).padStart(3)} | Précision: ${m.accuracy}% | PP: ${m.pp}`,
-        value: i,
-      })),
-    },
-  ]);
-
-  engine.playerAttack(moveIndex);
-  if (!engine.isOver()) engine.botAttack();
-};
-
-const askPokemon = async () => {
-  while (true) {
-    const { pokemonName } = await inquirer.prompt([
+  try {
+    const { playerPokemonName } = await inquirer.prompt([
       {
         type: "input",
-        name: "pokemonName",
-        message: "Entrez le nom de votre Pokémon :",
-        validate: (v) => v.trim() !== "" || "Le nom ne peut pas être vide.",
-      },
+        name: "playerPokemonName",
+        message: "Entre le nom de ton Pokémon :",
+        validate: (input) => {
+          if (input.trim() === "") {
+            return "Le nom ne peut pas être vide.";
+          }
+          return true;
+        }
+      }
     ]);
 
-    try {
-      const pokemon = await fetchPokemon(pokemonName);
-      return pokemon;
-    } catch {
-      console.log(`\n❌ "${pokemonName}" n'est pas un Pokémon valide. Essayez : pikachu, charizard, eevee...\n`);
-    }
+    const playerPokemonData = await getPokemonByName(playerPokemonName.trim());
+    const botPokemonData = await getRandomPokemon();
+
+    const player = await buildFighterFromPokemon(playerPokemonData);
+    const bot = await buildFighterFromPokemon(botPokemonData);
+
+    console.log("\nTon Pokémon est prêt !");
+    console.log(`Nom: ${player.name}`);
+    console.log("Ses 5 attaques sont :");
+    player.moves.forEach((move, index) => {
+      console.log(
+        `${index + 1}. ${move.name} | Power: ${move.power} | Accuracy: ${move.accuracy} | PP: ${move.pp}`
+      );
+    });
+
+    console.log("\nLe Pokémon du bot est prêt !");
+    console.log(`Nom: ${bot.name}`);
+    console.log("Ses 5 attaques sont :");
+    bot.moves.forEach((move, index) => {
+      console.log(
+        `${index + 1}. ${move.name} | Power: ${move.power} | Accuracy: ${move.accuracy} | PP: ${move.pp}`
+      );
+    });
+
+    await startBattle(player, bot);
+  } catch (error) {
+    console.log("\nErreur :", error.message);
+    console.log("Vérifie le nom du Pokémon et réessaie.");
   }
-};
-
-// ── Main ─────────────────────────────────────────────────────────
-
-const main = async () => {
-  console.log("╔════════════════════════════╗");
-  console.log("║    🎮  POKÉMON BATTLE CLI  ║");
-  console.log("╚════════════════════════════╝\n");
-
-  // Choix du Pokémon joueur (avec redemande si invalide)
-  const player = await askPokemon();
-
-  // Pokémon du bot choisi aléatoirement
-  const botPool = ["pikachu", "charmander", "bulbasaur", "squirtle", "mewtwo"];
-  const botName = botPool[Math.floor(Math.random() * botPool.length)];
-
-  console.log(`\nChargement du bot (${botName})...`);
-  const bot = await fetchPokemon(botName);
-
-  console.log(`\n⚔️  ${player.name.toUpperCase()} VS ${bot.name.toUpperCase()}\n`);
-
-  // Création du moteur de jeu
-  const engine = new GameEngine(player, bot);
-
-  // Écouteurs d'événements (comme dans le cours)
-  engine.on("attack", ({ attacker, defender, move, remaining }) => {
-    console.log(`💥 ${attacker} utilise ${move.name} → ${move.power} dégâts → ${defender} : ${remaining} HP restants`);
-  });
-
-  engine.on("miss", ({ attacker, move }) => {
-    console.log(`💨 ${attacker} utilise ${move.name} mais rate ! (précision: ${move.accuracy}%)`);
-  });
-
-  engine.on("blocked", ({ attacker, move }) => {
-    console.log(`🚫 ${attacker} essaie ${move.name} mais PP trop faible — attaque annulée !`);
-  });
-
-  engine.on("end", ({ winner }) => {
-    console.log(`\n🏆 Fin du combat ! Vainqueur : ${winner.toUpperCase()}\n`);
-  });
-
-  // Boucle de jeu
-  while (!engine.isOver()) {
-    await playTurn(engine);
-  }
-};
+}
 
 main();
